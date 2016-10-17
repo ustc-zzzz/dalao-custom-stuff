@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <title>Custom Stuff Dalao</title>
+
+    <link href="css/material-icons.css" rel="stylesheet">
+    <link href="css/materialize.min.css" rel="stylesheet">
+
+    <script src="js/jquery-2.1.1.min.js"></script>
+    <script src="js/materialize.min.js"></script>
+
+    <style>
+        main {
+            position: absolute;
+            top: 64px;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            overflow: scroll;
+        }
+
+        div#canvas-wrapper {
+            margin: auto;
+        }
+
+        div#canvas-wrapper div {
+            margin: 8px;
+            cursor: crosshair;
+        }
+
+        @media only screen and (max-width: 600px) {
+            div#canvas-wrapper div {
+                margin-top: 0;
+            }
+        }
+
+        nav i {
+            font-size: 15px !important;
+        }
+    </style>
+
+    <script>
+        function ShapeLine() {
+            this.bbox = {top: 0, right: 0, bottom: 0, left: 0};
+
+            this.draw = function (ctx) {
+                ctx.beginPath();
+                ctx.moveTo(this.bbox.left, this.bbox.top);
+                ctx.lineTo(this.bbox.right, this.bbox.bottom);
+                ctx.stroke();
+            };
+        }
+
+        function ShapeRect() {
+            this.bbox = {top: 0, right: 0, bottom: 0, left: 0};
+
+            this.draw = function (ctx) {
+                ctx.strokeRect(Math.min(this.bbox.left, this.bbox.right),
+                        Math.min(this.bbox.top, this.bbox.bottom),
+                        Math.abs(this.bbox.left - this.bbox.right),
+                        Math.abs(this.bbox.top - this.bbox.bottom));
+            };
+        }
+
+        function ShapeEllipse() {
+            this.bbox = {top: 0, right: 0, bottom: 0, left: 0};
+
+            this.draw = function (ctx) {
+                ctx.save();
+                ctx.beginPath();
+
+                ctx.translate(Math.min(this.bbox.left, this.bbox.right),
+                        Math.min(this.bbox.top, this.bbox.bottom));
+                ctx.scale(Math.abs(this.bbox.left - this.bbox.right) / 2,
+                        Math.abs(this.bbox.top - this.bbox.bottom) / 2);
+                ctx.arc(1, 1, 1, 0, 2 * Math.PI, false);
+
+                ctx.restore();
+                ctx.stroke();
+            };
+        }
+
+        function ShapeImage(img) {
+            this.bbox = {top: 0, right: 0, bottom: 0, left: 0};
+
+            this.img = img;
+
+            this.draw = function (ctx) {
+                ctx.drawImage(this.img,
+                        Math.min(this.bbox.left, this.bbox.right),
+                        Math.min(this.bbox.top, this.bbox.bottom),
+                        Math.abs(this.bbox.left - this.bbox.right),
+                        Math.abs(this.bbox.top - this.bbox.bottom));
+            };
+        }
+    </script>
+
+    <script>
+        jQuery(function ($) {
+            var shapes = [];
+            var currentShape = null, currentShapeGenerater = function () { return null; };
+            var mouseDown = false;
+
+            var context = document.getElementsByTagName('canvas')[0].getContext('2d');
+
+            function drawGraph() {
+                context.clearRect(0, 0, context.canvas.width, context.canvas.height);
+                shapes.forEach(function (shape) {
+                    shape.draw(context);
+                });
+                if (currentShape) {
+                    currentShape.draw(context);
+                }
+            }
+
+            $('#nav-fill-and-stroke').click(function () {
+                Materialize.toast("CustomStuff 你可没说要实现 Fill & Stroke 这项功能" +
+                        "<br>" + "( 所以说这个按钮放在这里其实只是闹着玩的 hhhh )", 5000);
+            });
+
+            $('canvas').mousedown(function (e) {
+                if (currentShape) {
+                    shapes.push(currentShape);
+                }
+                currentShape = currentShapeGenerater();
+                if (currentShape) {
+                    currentShape.bbox = {
+                        top: e.offsetY,
+                        right: e.offsetX,
+                        bottom: e.offsetY,
+                        left: e.offsetX
+                    };
+                }
+                mouseDown = true;
+                drawGraph();
+            }).mouseup(function () {
+                mouseDown = false;
+            });
+
+            $('main').mousemove(function (e) {
+                if (mouseDown) {
+                    var offset = $('canvas').offset();
+                    if (currentShape) {
+                        currentShape.bbox.right = e.pageX - offset.left;
+                        currentShape.bbox.bottom = e.pageY - offset.top;
+                    }
+                    drawGraph();
+                }
+            }).mouseleave(function () {
+                if (mouseDown) {
+                    currentShape = null;
+                    drawGraph();
+                }
+            }).mouseup(function () {
+                mouseDown = false;
+            });
+
+            $('#nav-line').click(function () {
+                currentShapeGenerater = function () { return new ShapeLine(); };
+            });
+
+            $('#nav-rect').click(function () {
+                currentShapeGenerater = function () { return new ShapeRect(); };
+            });
+
+            $('#nav-ellipse').click(function () {
+                currentShapeGenerater = function () { return new ShapeEllipse(); };
+            });
+
+            $('#nav-img').click(function () {
+                $('input[type=file]').change(function () {
+                    var file = this.files[0];
+                    if (file) {
+                        var reader = new FileReader(), img = $('<img>');
+                        reader.onloadend = function () {
+                            img.attr('src', reader.result);
+                            currentShapeGenerater = function () {
+                                return new ShapeImage(img[0]);
+                            };
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                }).click();
+            });
+
+            $('#nav-save').click(function () {
+                $(this).attr('href', context.canvas.toDataURL()).attr('download', 'download.png');
+            });
+        });
+    </script>
+</head>
+<body>
+    <header>
+        <ul id="dropdown-shapes" class="dropdown-content">
+            <li><a id="nav-line">Lines</a></li>
+            <li><a id="nav-rect">Rectangles</a></li>
+            <li><a id="nav-ellipse">Ellipses</a></li>
+            <li><a id="nav-img">Images</a></li>
+        </ul>
+        <nav>
+            <div class="nav-wrapper blue">
+                <a href="#!" class="brand-logo hide-on-med-and-down">&nbsp;Custom Stuff Dalao</a>
+                <ul class="right">
+                    <li><a class="dropdown-button" data-activates="dropdown-shapes">
+                        Shapes<i class="material-icons right">arrow_drop_down</i>
+                    </a></li>
+                    <li><a id="nav-fill-and-stroke">
+                        Fill &amp; Stroke
+                    </a></li>
+                    <li><a id="nav-save">
+                        <i class="material-icons left">save</i>Save
+                    </a></li>
+                </ul>
+            </div>
+        </nav>
+    </header>
+    <main class="valign-wrapper">
+        <div id="canvas-wrapper">
+            <div class="z-depth-1">
+                <canvas width="800" height="600" id="canvas-main"></canvas>
+            </div>
+        </div>
+        <!-- for uploading the image -->
+        <input type="file" style="display: none;">
+        <!-- for downloading the image -->
+        <a id="download-img" style="display: none;"></a>
+    </main>
+</body>
+</html>
