@@ -9,9 +9,13 @@
 
     <link href="css/material-icons.css" rel="stylesheet">
     <link href="css/materialize.min.css" rel="stylesheet">
+    <link href="css/prism.css" rel="stylesheet">
+    <link href="css/materialize-colorpicker.min.css" rel="stylesheet">
 
     <script src="js/jquery-2.1.1.min.js"></script>
     <script src="js/materialize.min.js"></script>
+    <script src="js/prism.js"></script>
+    <script src="js/materialize-colorpicker.min.js"></script>
 
     <style>
         main {
@@ -29,6 +33,9 @@
 
         div#canvas-wrapper div {
             margin: 8px;
+        }
+
+        canvas {
             cursor: crosshair;
         }
 
@@ -38,8 +45,62 @@
             }
         }
 
+        div#selection {
+            position: absolute;
+            top: 128px;
+            right: 128px;
+            bottom: 128px;
+            left: 128px;
+            border: 1px dotted;
+            cursor: move;
+        }
+
+        div#selection div {
+            position: absolute;
+            margin: 0;
+            width: 16px;
+            height: 16px;
+            border: 1px solid;
+        }
+
+        div#selection-tl, div#selection-br {
+            cursor: nwse-resize;
+        }
+
+        div#selection-t, div#selection-b {
+            cursor: ns-resize;
+        }
+
+        div#selection-tr, div#selection-bl {
+            cursor: nesw-resize;
+        }
+
+        div#selection-l, div#selection-r {
+            cursor: ew-resize;
+        }
+
         nav i {
             font-size: 15px !important;
+        }
+
+        #modal-fill-and-stroke {
+            padding-top: 0.75rem;
+        }
+
+        .fill-and-stroke-color-picker .colorpicker-saturation {
+            width: 200px;
+            height: 200px;
+        }
+
+        .fill-and-stroke-color-picker .colorpicker-hue,
+        .fill-and-stroke-color-picker .colorpicker-alpha {
+            width: 28px;
+            height: 200px;
+        }
+
+        .fill-and-stroke-color-picker .colorpicker-color,
+        .fill-and-stroke-color-picker .colorpicker-color div {
+            height: 28px;
         }
     </style>
 
@@ -48,6 +109,7 @@
             this.bbox = {top: 0, right: 0, bottom: 0, left: 0};
 
             this.draw = function (ctx) {
+                ctx.strokeStyle = this.prop.color;
                 ctx.beginPath();
                 ctx.moveTo(this.bbox.left, this.bbox.top);
                 ctx.lineTo(this.bbox.right, this.bbox.bottom);
@@ -59,6 +121,7 @@
             this.bbox = {top: 0, right: 0, bottom: 0, left: 0};
 
             this.draw = function (ctx) {
+                ctx.strokeStyle = this.prop.color;
                 ctx.strokeRect(Math.min(this.bbox.left, this.bbox.right),
                         Math.min(this.bbox.top, this.bbox.bottom),
                         Math.abs(this.bbox.left - this.bbox.right),
@@ -70,6 +133,7 @@
             this.bbox = {top: 0, right: 0, bottom: 0, left: 0};
 
             this.draw = function (ctx) {
+                ctx.strokeStyle = this.prop.color;
                 ctx.save();
                 ctx.beginPath();
 
@@ -101,11 +165,175 @@
 
     <script>
         jQuery(function ($) {
+            function Selection() {
+                var self = this;
+
+                this.selectedShape = null;
+                this.dragState = {pageX: undefined, pageY: undefined, dragFunc: null};
+
+                function setDrag(element, func) {
+                    $(element).mousedown(function (e) {
+                        self.dragState.dragFunc = func;
+                        self.dragState.pageX = e.pageX;
+                        self.dragState.pageY = e.pageY;
+                        e.stopPropagation();
+                    });
+                }
+
+                $('#selection').each(function() {
+                    setDrag(this, function (dx, dy) {
+                        self.selectedShape.bbox.left += dx;
+                        self.selectedShape.bbox.top += dy;
+                        self.selectedShape.bbox.right += dx;
+                        self.selectedShape.bbox.bottom += dy;
+                    });
+                });
+
+                $('#selection-tl').each(function () {
+                    setDrag(this, function (dx, dy) {
+                        self.selectedShape.bbox.left += dx;
+                        self.selectedShape.bbox.top += dy;
+                    });
+                });
+
+                $('#selection-t').each(function () {
+                    setDrag(this, function (dx, dy) {
+                        self.selectedShape.bbox.top += dy;
+                    });
+                });
+
+                $('#selection-tr').each(function () {
+                    setDrag(this, function (dx, dy) {
+                        self.selectedShape.bbox.right += dx;
+                        self.selectedShape.bbox.top += dy;
+                    });
+                });
+
+                $('#selection-r').each(function () {
+                    setDrag(this, function (dx, dy) {
+                        self.selectedShape.bbox.right += dx;
+                    });
+                });
+
+                $('#selection-br').each(function () {
+                    setDrag(this, function (dx, dy) {
+                        self.selectedShape.bbox.right += dx;
+                        self.selectedShape.bbox.bottom += dy;
+                    });
+                });
+
+                $('#selection-b').each(function () {
+                    setDrag(this, function (dx, dy) {
+                        self.selectedShape.bbox.bottom += dy;
+                    });
+                });
+
+                $('#selection-bl').each(function () {
+                    setDrag(this, function (dx, dy) {
+                        self.selectedShape.bbox.left += dx;
+                        self.selectedShape.bbox.bottom += dy;
+                    });
+                });
+
+                $('#selection-l').each(function () {
+                    setDrag(this, function (dx, dy) {
+                        self.selectedShape.bbox.left += dx;
+                    });
+                });
+
+                $('main').mousedown(function (e) {
+                    var offset = $('canvas').offset(), left = e.pageX - offset.left, top = e.pageY - offset.top;
+                    for (var i = shapes.length - 1; i >= 0; --i) {
+                        var shape = shapes[i];
+                        if ((left - shape.bbox.left) * (left - shape.bbox.right) > 0) {
+                            continue;
+                        }
+                        if ((top - shape.bbox.top) * (top - shape.bbox.bottom) > 0) {
+                            continue;
+                        }
+                        if (!currentShape) {
+                            self.selectedShape = shape;
+                            self.update();
+                            self.dragState.dragFunc = function (dx, dy) {
+                                self.selectedShape.bbox.left += dx;
+                                self.selectedShape.bbox.top += dy;
+                                self.selectedShape.bbox.right += dx;
+                                self.selectedShape.bbox.bottom += dy;
+                            };
+                            self.dragState.pageX = e.pageX;
+                            self.dragState.pageY = e.pageY;
+                            drawGraph();
+                        }
+                        break;
+                    }
+                }).mouseup(function (e) {
+                    if (self.dragState.dragFunc && self.selectedShape) {
+                        e.stopImmediatePropagation();
+                        self.dragState.dragFunc = null;
+                        self.dragState.pageX = e.pageX;
+                        self.dragState.pageY = e.pageY;
+                    }
+                }).mouseleave(function (e) {
+                    if (self.dragState.dragFunc && self.selectedShape) {
+                        e.stopImmediatePropagation();
+                        self.dragState.dragFunc = null;
+                        self.dragState.pageX = e.pageX;
+                        self.dragState.pageY = e.pageY;
+                    }
+                });
+
+                $('main, #selection').mousemove(function (e) {
+                    console.log(self.selectedShape, Date.now());
+                    if (self.dragState.dragFunc && self.selectedShape) {
+                        self.dragState.dragFunc(e.pageX - self.dragState.pageX, e.pageY - self.dragState.pageY);
+                        self.dragState.pageX = e.pageX;
+                        self.dragState.pageY = e.pageY;
+                        self.update();
+                        drawGraph();
+                    }
+                })
+
+                $(window).resize(function () {
+                    self.update();
+                });
+
+                this.update = function () {
+                    if (this.selectedShape) {
+                        var main = document.getElementsByTagName('main')[0];
+                        var canvas = context.canvas, bbox = this.selectedShape.bbox;
+                        var top = Math.min(bbox.top, bbox.bottom) + canvas.offsetTop - 16;
+                        var left = Math.min(bbox.left, bbox.right) + canvas.offsetLeft - 16;
+                        var right = main.offsetWidth - canvas.offsetLeft - Math.max(bbox.left, bbox.right) - 32;
+                        var bottom = main.offsetHeight - canvas.offsetTop - Math.max(bbox.top, bbox.bottom) - 32;
+                        $('#selection').show()
+                                .css('top', top + 'px').css('left', left + 'px')
+                                .css('right', right + 'px').css('bottom', bottom + 'px');
+                        $('#selection-tl, #selection-t, #selection-tr')
+                                .css('top', bbox.top - top + canvas.offsetTop - 16 + 'px');
+                        $('#selection-l, #selection-r')
+                                .css('top', (bbox.top + bbox.bottom) / 2 - top + canvas.offsetTop - 16 + 'px');
+                        $('#selection-bl, #selection-b, #selection-br')
+                                .css('top', bbox.bottom - top + canvas.offsetTop - 16 + 'px');
+                        $('#selection-tl, #selection-l, #selection-bl')
+                                .css('left', bbox.left - left + canvas.offsetLeft - 16 + 'px');
+                        $('#selection-t, #selection-b')
+                                .css('left', (bbox.left + bbox.right) / 2 - left + canvas.offsetLeft - 16 + 'px');
+                        $('#selection-tr, #selection-r, #selection-br')
+                                .css('left', bbox.right - left + canvas.offsetLeft - 16 + 'px');
+                    } else {
+                        $('#selection').hide();
+                    }
+                }
+            }
+
             var shapes = [];
             var currentShape = null, currentShapeGenerater = function () { return null; };
             var mouseDown = false;
 
             var context = document.getElementsByTagName('canvas')[0].getContext('2d');
+            var properties = {color: '#66ccff'};
+
+            var selection = new Selection();
 
             function drawGraph() {
                 context.clearRect(0, 0, context.canvas.width, context.canvas.height);
@@ -118,30 +346,58 @@
             }
 
             $('#nav-fill-and-stroke').click(function () {
-                Materialize.toast("CustomStuff 你可没说要实现 Fill & Stroke 这项功能" +
-                        "<br>" + "( 所以说这个按钮放在这里其实只是闹着玩的 hhhh )", 5000);
+                $('#modal-fill-and-stroke').openModal({
+                    in_duration: 0,
+                    out_duration: 10,
+                    ready: function () {
+                        if (selection.selectedShape) {
+                            properties = selection.selectedShape.prop;
+                        }
+                        $('#fill-and-stroke-color-picker').colorpicker({
+                            color: properties.color,
+                            customClass: 'fill-and-stroke-color-picker',
+                            align: 'left',
+                            sliders: {
+                                saturation: {maxLeft: 200, maxTop: 200},
+                                hue: {maxTop: 200},
+                                alpha: {maxTop: 200}
+                            }
+                        });
+                    },
+                    complete: function () {
+                        properties.color = $('#fill-and-stroke-color-picker').colorpicker('getValue');
+                        if (selection.selectedShape) {
+                            selection.selectedShape.prop = properties;
+                            selection.update();
+                            drawGraph();
+                        }
+                    }
+                });
             });
 
-            $('canvas').mousedown(function (e) {
+            $('main').mousedown(function (e) {
                 if (currentShape) {
                     shapes.push(currentShape);
                 }
                 currentShape = currentShapeGenerater();
                 if (currentShape) {
+                    var offset = $('canvas').offset();
                     currentShape.bbox = {
-                        top: e.offsetY,
-                        right: e.offsetX,
-                        bottom: e.offsetY,
-                        left: e.offsetX
+                        top: e.pageY - offset.top,
+                        right: e.pageX - offset.left,
+                        bottom: e.pageY - offset.top,
+                        left: e.pageX - offset.left
                     };
+                    currentShape.prop = $.extend({}, properties);
+                    selection.selectedShape = null;
+                    selection.update();
+                    e.stopPropagation();
+                    mouseDown = true;
+                    drawGraph();
+                } else {
+                    mouseDown = false;
                 }
-                mouseDown = true;
-                drawGraph();
-            }).mouseup(function () {
-                mouseDown = false;
-            });
-
-            $('main').mousemove(function (e) {
+            }).mousemove(function (e) {
                 if (mouseDown) {
                     var offset = $('canvas').offset();
                     if (currentShape) {
@@ -158,6 +414,20 @@
             }).mouseup(function () {
                 mouseDown = false;
             });
+
+            $('#dropdown-shapes a').click(function () {
+                $('#nav-tools-name').text($(this).text());
+                if (currentShape) {
+                    shapes.push(currentShape);
+                    currentShape = null;
+                }
+                selection.selectedShape = null;
+                selection.update();
+            });
+
+            $('#nav-hand').click(function () {
+                currentShapeGenerater = function () { return null; };
+            })
 
             $('#nav-line').click(function () {
                 currentShapeGenerater = function () { return new ShapeLine(); };
@@ -196,6 +466,7 @@
 <body>
     <header>
         <ul id="dropdown-shapes" class="dropdown-content">
+            <li><a id="nav-hand">Hand</a></li>
             <li><a id="nav-line">Lines</a></li>
             <li><a id="nav-rect">Rectangles</a></li>
             <li><a id="nav-ellipse">Ellipses</a></li>
@@ -206,7 +477,8 @@
                 <a href="#!" class="brand-logo hide-on-med-and-down">&nbsp;Custom Stuff Dalao</a>
                 <ul class="right">
                     <li><a class="dropdown-button" data-activates="dropdown-shapes">
-                        Shapes<i class="material-icons right">arrow_drop_down</i>
+                        Tools: <span id="nav-tools-name">Hand</span>
+                        <i class="material-icons right">arrow_drop_down</i>
                     </a></li>
                     <li><a id="nav-fill-and-stroke">
                         Fill &amp; Stroke
@@ -223,11 +495,55 @@
             <div class="z-depth-1">
                 <canvas width="800" height="600" id="canvas-main"></canvas>
             </div>
+            <div id="selection" style="display: none;">
+                <div id="selection-tl"></div>
+                <div id="selection-t"></div>
+                <div id="selection-tr"></div>
+                <div id="selection-r"></div>
+                <div id="selection-br"></div>
+                <div id="selection-b"></div>
+                <div id="selection-bl"></div>
+                <div id="selection-l"></div>
+            </div>
         </div>
         <!-- for uploading the image -->
         <input type="file" style="display: none;">
         <!-- for downloading the image -->
         <a id="download-img" style="display: none;"></a>
     </main>
+    <footer>
+        <div id="modal-fill-and-stroke" class="modal modal-fixed-footer">
+            <div class="modal-content">
+                <div class="row">
+                    <div class="col s12">
+                        <h4>非常优秀的 Fill & Stroke 调整窗口</h4>
+                        <p>虽然 Stroke 部分还没实现，因为 CustomStuff 没说让实现。</p>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col s12">
+                        <h5>Fill: </h5>
+                        <input type="text" id="fill-and-stroke-color-picker">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col s12">
+                        <h5>Stroke: </h5>
+                        <p>
+                            Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
+                            tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam,
+                            quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo
+                            consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse
+                            cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat
+                            non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#!" class="modal-action modal-close waves-effect waves-green btn-flat">OK</a>
+            </div>
+        </div>
+    </footer>
 </body>
 </html>
